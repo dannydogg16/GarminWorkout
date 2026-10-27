@@ -22,9 +22,9 @@ The uploaded workbook has Progress, Program, Strength Log, Run Log, and Profile 
 
 Only unused A:H rows 2–301 are eligible. No append-to-bottom API is used because prefilled formulas would push entries beyond reporting ranges. Existing manual entries are never merged or overwritten. Existing IDs anywhere in Run Log are checked. Changed headers, duplicate existing IDs, invalid metrics, missing target formulas, or full capacity stop the import before writes. Missing optional metrics are left blank. All writes use RAW, so text cannot execute spreadsheet formulas. No format, other tab, existing formula, or subjective effort cell is updated. Profile's existing integration-status text is also left unchanged.
 
-## 1. Put the code in GitHub
+## 1. Review the code in GitHub
 
-Publish these project files to `dannydogg16/GarminWorkout` on its `main` branch using your normal Git workflow. Don't commit the workbook, credentials, `.env` files, or generated authentication files; `.gitignore` covers common paths. Only offline tests run on push/PR. Sync runs only from main, via manual dispatch or a gated schedule. This workspace implementation does not by itself install a workflow on GitHub.
+The implementation is on `dannydogg16/GarminWorkout`'s `main` branch. Don't commit the workbook, credentials, `.env` files, or generated authentication files; `.gitignore` covers common paths. Only offline tests run on push/PR. Sync runs only from main, via manual dispatch or a gated schedule. Publishing the code does not configure Google access, install your Garmin secret, or verify a live import.
 
 ## 2. Google: keyless access to just the target file
 
