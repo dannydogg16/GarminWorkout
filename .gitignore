@@ -1,0 +1,10 @@
+.venv/
+__pycache__/
+*.pyc
+.env
+.env.*
+gha-creds-*.json
+*credentials*.json
+*service-account*.json
+*.xlsx
+prescriptions.local.json

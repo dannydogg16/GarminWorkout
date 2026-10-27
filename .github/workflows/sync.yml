@@ -1,0 +1,85 @@
+name: Garmin sync
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Start with dry-run-latest; apply-latest writes at most one activity
+        type: choice
+        default: dry-run-latest
+        options:
+          - dry-run-latest
+          - apply-latest
+          - sync
+      since:
+        description: Optional earliest local activity date (YYYY-MM-DD); default last 30 days
+        type: string
+        required: false
+  schedule:
+    - cron: '17 11 * * *'
+
+permissions: {}
+
+concurrency:
+  group: garmin-training-tracker
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'workflow_dispatch' || vars.ENABLE_DAILY_SYNC == 'true')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: '3.12'
+      - name: Install locked dependencies
+        run: |
+          python -m pip install --require-hashes --only-binary=:all: -r requirements.lock
+      - name: Offline safety tests
+        env:
+          PYTHONPATH: src
+        run: python -m unittest discover -s tests -v
+      - name: Validate Google configuration
+        env:
+          PROVIDER: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          SERVICE_ACCOUNT: ${{ vars.GCP_SERVICE_ACCOUNT }}
+        run: |
+          test -n "$PROVIDER" || { echo 'Set GCP_WORKLOAD_IDENTITY_PROVIDER repository variable.'; exit 1; }
+          test -n "$SERVICE_ACCOUNT" || { echo 'Set GCP_SERVICE_ACCOUNT repository variable.'; exit 1; }
+      - name: Authenticate to Google with short-lived identity
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+          create_credentials_file: true
+          export_environment_variables: true
+      - name: Synchronize
+        env:
+          GARMIN_API_KEY: ${{ secrets.GARMIN_API_KEY }}
+          PYTHONPATH: src
+          SYNC_MODE: ${{ inputs.mode }}
+          SYNC_SINCE: ${{ inputs.since }}
+          EVENT_NAME: ${{ github.event_name }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          args=()
+          if [[ "$EVENT_NAME" == schedule ]]; then
+            args+=(--apply)
+          else
+            case "$SYNC_MODE" in
+              dry-run-latest) args+=(--latest) ;;
+              apply-latest) args+=(--latest --apply) ;;
+              sync) args+=(--apply) ;;
+              *) echo 'Unknown sync mode.'; exit 1 ;;
+            esac
+          fi
+          if [[ -n "$SYNC_SINCE" ]]; then args+=(--since "$SYNC_SINCE"); fi
+          python -m garmin_sync "${args[@]}"
