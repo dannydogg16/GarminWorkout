@@ -30,7 +30,7 @@ class PlannerTests(unittest.TestCase):
         self.assertEqual(before, original)
         self.assertEqual(ids, ["123"]); self.assertEqual(matches, 0)
         self.assertEqual([c["range"] for c in changes], ["'Run Log'!A2:F2", "'Run Log'!H2"])
-        self.assertEqual(changes[0]["values"][0][1:], ["123", "running", 1, 10, 140])
+        self.assertEqual(changes[0]["values"][0][1:], ["123", "running", 1, 10 / 1440, 140])
         notes = json.loads(changes[1]["values"][0][0])
         self.assertEqual(notes["max_hr_bpm"], 170); self.assertEqual(notes["avg_pace_min_mi"], 10)
 
@@ -255,6 +255,56 @@ class CliTests(unittest.TestCase):
             garmin.return_value.activities.return_value = []
             run(); sheets.assert_not_called()
             self.assertIn("No running activities found", output.getvalue())
+
+
+class TimeFormatTests(unittest.TestCase):
+    def book(self):
+        from garmin_sync.time_format import progress_formulas
+        book = {"Run Log": rows(), "Progress": [[""] * 6 for _ in range(34)], "Profile": [["Keep this"]]}
+        book["Run Log"][0][4] = "Duration (min)"
+        book["Run Log"][1][4] = 42.2781656901042
+        for cell, value in progress_formulas().items():
+            book["Progress"][int(cell[1:]) - 1][ord(cell[0]) - 65] = value
+        return book, {"Run Log": 1, "Progress": 2, "Profile": 3}
+
+    def convert(self, book, ids, requests):
+        after = copy.deepcopy(book)
+        for request in requests:
+            if "updateCells" not in request: continue
+            update = request["updateCells"]; area = update["range"]
+            tab = next(t for t, i in ids.items() if i == area["sheetId"])
+            value = next(iter(update["rows"][0]["values"][0]["userEnteredValue"].values()))
+            after[tab][area["startRowIndex"]][area["startColumnIndex"]] = value
+        return after
+
+    def test_atomic_conversion_preserves_totals_and_formulas(self):
+        from garmin_sync.time_format import migration, FORMAT
+        book, ids = self.book(); original = copy.deepcopy(book)
+        requests, minutes, converted = migration(book, ids)
+        self.assertFalse(converted); self.assertEqual(book, original)
+        after = self.convert(book, ids, requests)
+        self.assertEqual(after["Run Log"][1][4], book["Run Log"][1][4] / 1440)
+        self.assertEqual(after["Progress"][5][1], "=SUM('Run Log'!E2:E301)*1440")
+        self.assertEqual(after["Run Log"][1][8:], book["Run Log"][1][8:])
+        self.assertEqual(after["Profile"], book["Profile"])
+        self.assertAlmostEqual(after["Run Log"][1][4] * 1440, minutes[2])
+        self.assertEqual([r["repeatCell"]["cell"]["userEnteredFormat"]["numberFormat"] for r in requests if "repeatCell" in r], [FORMAT, FORMAT])
+        _, after_minutes, converted = migration(after, ids)
+        self.assertTrue(converted); self.assertAlmostEqual(minutes[2], after_minutes[2])
+
+    def test_repeat_does_not_divide_again(self):
+        from garmin_sync.time_format import migration
+        book, ids = self.book(); requests, _, _ = migration(book, ids)
+        after = self.convert(book, ids, requests)
+        repeated, _, converted = migration(after, ids)
+        self.assertTrue(converted); self.assertTrue(all("repeatCell" in r for r in repeated))
+
+    def test_unexpected_dependencies_or_text_duration_stop_migration(self):
+        from garmin_sync.time_format import migration
+        for tab, r, c, value in [("Profile", 0, 0, "=SUM('Run Log'!E2:E301)"),
+                                  ("Run Log", 1, 4, "42:17"), ("Progress", 5, 1, "=1")]:
+            book, ids = self.book(); book[tab][r][c] = value
+            with self.assertRaises(SyncError): migration(book, ids)
 
 
 if __name__ == "__main__": unittest.main()

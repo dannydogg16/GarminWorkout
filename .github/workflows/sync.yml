@@ -11,6 +11,8 @@ on:
           - dry-run-latest
           - apply-latest
           - sync
+          - dry-run-format-times
+          - format-times
       since:
         description: Optional earliest local activity date (YYYY-MM-DD); default last 30 days
         type: string
@@ -78,6 +80,8 @@ jobs:
               dry-run-latest) args+=(--latest) ;;
               apply-latest) args+=(--latest --apply) ;;
               sync) args+=(--apply) ;;
+              dry-run-format-times) args+=(--format-times) ;;
+              format-times) args+=(--format-times --apply) ;;
               *) echo 'Unknown sync mode.'; exit 1 ;;
             esac
           fi

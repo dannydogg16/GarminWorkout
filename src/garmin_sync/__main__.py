@@ -13,10 +13,14 @@ def run():
     parser = argparse.ArgumentParser(description="Sync running activities. Default: dry-run, no writes.")
     parser.add_argument("--apply", action="store_true")
     parser.add_argument("--latest", action="store_true", help="Select only the most recent run (even if already imported).")
+    parser.add_argument("--format-times", action="store_true", help="Migrate duration/pace display to m:ss; requires --apply to write.")
     parser.add_argument("--since", type=date.fromisoformat)
     parser.add_argument("--until", type=date.fromisoformat, default=date.today())
     parser.add_argument("--prescriptions", default="prescriptions.json")
     args = parser.parse_args()
+    if args.format_times:
+        Sheets(JsonHttp(), write=args.apply).format_times()
+        return
     since = args.since or args.until - timedelta(days=30)
     if since > args.until:
         raise SyncError("--since must not be after --until.")

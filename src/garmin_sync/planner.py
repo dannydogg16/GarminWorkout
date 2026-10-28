@@ -5,7 +5,7 @@ import re
 from datetime import date, datetime
 from .http import SyncError
 
-HEADERS = ["Date", "Activity ID", "Run type", "Distance (mi)", "Duration (min)",
+HEADERS = ["Date", "Activity ID", "Run type", "Distance (mi)", "Duration (m:ss)",
            "Avg HR (bpm)", "Effort (1–10)", "Notes / source", "Pace (min/mi)", "Week starting"]
 CAPACITY = 301  # Progress formulas only include rows 2:301.
 
@@ -151,7 +151,7 @@ def plan(rows, activities, prescriptions, workout_names=None):
             matched += 1
         serial = (date.fromisoformat(a["date"]) - date(1899, 12, 30)).days
         values = [serial, a["id"], match["run_type"] if match else a["type"],
-                  a["miles"], a["minutes"], a["hr"]]
+                  a["miles"], None if a["minutes"] is None else a["minutes"] / 1440, a["hr"]]
         # G (subjective effort), I/J (formulas), other tabs and formatting never written.
         changes += [{"range": f"'Run Log'!A{target}:F{target}", "values": [["" if v is None else v for v in values]]},
                     {"range": f"'Run Log'!H{target}", "values": [[json.dumps(notes, separators=(",", ":"), allow_nan=False)]]}]
