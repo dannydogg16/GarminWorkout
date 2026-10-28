@@ -14,6 +14,7 @@ def run():
     parser.add_argument("--apply", action="store_true")
     parser.add_argument("--latest", action="store_true", help="Select only the most recent run (even if already imported).")
     parser.add_argument("--format-times", action="store_true", help="Migrate duration/pace display to m:ss; requires --apply to write.")
+    parser.add_argument("--inspect-effort", action="store_true", help="Read effort-field availability without logging ratings or writing cells.")
     parser.add_argument("--since", type=date.fromisoformat)
     parser.add_argument("--until", type=date.fromisoformat, default=date.today())
     parser.add_argument("--prescriptions", default="prescriptions.json")
@@ -38,6 +39,15 @@ def run():
         activities = activities[:1]
     if not activities:
         print("No running activities found in the selected local-date window; no writes performed.")
+        return
+    if args.inspect_effort:
+        summaries = [garmin.summary(a["id"]) for a in activities]
+        for field in ("directWorkoutRpe", "perceivedWorkoutEffort"):
+            values = [s.get(field) for s in summaries if s.get(field) is not None]
+            native = sum(isinstance(v, (int, float)) and not isinstance(v, bool) and 1 <= v <= 10 for v in values)
+            scaled = sum(isinstance(v, (int, float)) and not isinstance(v, bool) and 10 < v <= 100 for v in values)
+            print(f"Effort inspection: {field}; present {len(values)}; in 1-10 range {native}; in 11-100 range {scaled}.")
+        print("Effort inspection complete; no ratings logged and no spreadsheet writes.")
         return
     sheets = Sheets(http, write=args.apply)
     before = sheets.read()

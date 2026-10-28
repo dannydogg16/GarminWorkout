@@ -65,3 +65,10 @@ class Garmin:
         if not isinstance(result, list) or any(not isinstance(x, dict) for x in result):
             raise SyncError("Garmin workout response must be an array of objects.")
         return result
+
+    def summary(self, identifier):
+        result = self.get(f"/activity-service/activity/{identifier}")
+        summary = result.get("summaryDTO") if isinstance(result, dict) else None
+        if not isinstance(summary, dict):
+            raise SyncError("Garmin detailed activity has no valid summaryDTO.")
+        return summary
