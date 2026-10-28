@@ -14,7 +14,7 @@ The imported run had no configured prescription match. Formula columns, effort c
 
 ## Offline and workbook validation
 
-- All **37 offline unit/integration tests passed**, including simulated CLI apply-latest and repeat import, formula preservation, missing metrics, duplicate IDs, exact/ambiguous matching, authentication renewal, plain-text token negotiation, bounded retries, minimum Google scopes, dry-run write prevention, concurrent-edit detection, native-duration conversion, preserved minute totals, and prevention of double conversion.
+- All **43 offline unit/integration tests passed**, including simulated CLI apply-latest and repeat import, formula preservation, missing metrics, duplicate IDs, exact/ambiguous matching, authentication renewal, plain-text token negotiation, bounded retries, minimum Google scopes, dry-run write prevention, concurrent-edit detection, native-duration conversion, preserved minute totals, prevention of double conversion, recorded RPE scaling, blank-effort backfill, and protection of existing ratings.
 - The uploaded workbook's Run Log headers and **600 formulas** (I/J, rows 2–301) match the implementation. A synthetic activity planned writes only to A2:F2 and H2. The export was never changed or added to Git.
 - All 11 dependency wheel hashes matched PyPI metadata. Hash-checked install completed and was repeated successfully; `pip check` found no broken requirements.
 - Workflow YAML parsed, action references were verified as full commit hashes, and embedded shell scripts passed `bash -n`.
@@ -30,3 +30,14 @@ At the user's request, duration and pace were changed to native numeric time val
 - [Atomic formatting update](https://github.com/dannydogg16/GarminWorkout/actions/runs/40714420279) succeeded. Readback verified all recorded durations, every affected calculated Progress minute total, unchanged unrelated values/formulas, time formats, and actual formatted minute:second strings. Future imports write native day-based duration values into the formatted range.
 
 The formatting command is explicit and repeatable; ordinary sync never rewrites summary formulas or performs unit migrations. Manual duration entries in the new format must be entered as durations (for example `0:42:17` for 42 minutes, 17 seconds), rather than decimal minutes.
+
+## Recorded effort import: 2026-10-28
+
+The original importer deliberately left subjective effort blank and read only the activity-list summaries. At the user's request, it now retrieves the detail summary's recorded `directWorkoutRpe`, decodes Garmin's 10× RPE representation, and fills G only when blank. No HR/pace inference or training-effect substitution is used. Previously imported rows can receive a late rating without creating another activity or altering their other cells.
+
+- [Read-only field inspection](https://github.com/dannydogg16/GarminWorkout/actions/runs/40715972634) confirmed a recorded direct RPE was available for the recent activity. No rating values were logged.
+- [Dry run](https://github.com/dannydogg16/GarminWorkout/actions/runs/40716421292) planned one effort update and zero new activity rows.
+- [Live backfill](https://github.com/dannydogg16/GarminWorkout/actions/runs/40716524287) filled one effort cell and verified its value by readback, with zero new activity rows.
+- [Repeat run](https://github.com/dannydogg16/GarminWorkout/actions/runs/40716675009) reported zero effort updates, zero new activities, and no writes needed.
+
+Both live runs passed all 43 tests. Manual ratings, formula columns, time formatting, and other existing row content were excluded from the backfill's single G-cell write.

@@ -24,8 +24,13 @@ The OpenAPI servers are `https://personal.connectapi.garmin.com` and the China-r
 | --- | --- |
 | `GET /activitylist-service/activities/search/activities` | Paginated activity summaries, filtered by parent `activityType=running`, inclusive `startDate` and `endDate` based on activity-local time; `start` offset and `limit` (99 default). |
 | `GET /activity-service/activity/{activityId}/workouts` | Optional exact workout-name matching; an array of `ActivityWorkoutDTO`, empty when there are none. Only called when prescriptions need it. |
+| `GET /activity-service/activity/{activityId}` | Read `summaryDTO.directWorkoutRpe` for recorded effort on new runs or existing runs with a blank effort cell. |
 
-Also verified in the specification, but not required/called: `GET /activity-service/activity/{activityId}` (nested detailed summary) and `GET /download-service/files/activity/{activityId}` (original file). The personal API exposes other health endpoints; this integration does not access them.
+Also verified in the specification, but not required/called: `GET /download-service/files/activity/{activityId}` (original file). The personal API exposes other health endpoints; this integration does not access them.
+
+### Recorded effort encoding
+
+The official Personal API `SummaryDTO` includes `directWorkoutRpe` and `perceivedWorkoutEffort` as integers but does not describe their scaling. An authenticated read of the user's latest run confirmed `directWorkoutRpe` was present in the 11–100 range; `perceivedWorkoutEffort` was absent. No actual rating was logged. Garmin's [official FIT SDK profile](https://github.com/garmin/fit-python-sdk/blob/7e4b3132d50de66f5adfcd6c0addeaade41536d4/garmin_fit_sdk/profile.py#L7209) documents session `workout_rpe` as the Borg CR10 / 0–10 scale multiplied by ten. The adapter decodes recorded `directWorkoutRpe` by dividing by ten and permits encoded integer values 10–100, yielding the spreadsheet's 1–10 range. Zero, absent, malformed, or unsupported values stay blank. No transformation is assumed for `perceivedWorkoutEffort`, and training effects/load are not treated as RPE. This is retrieval of Garmin's recorded metric, not an estimate produced by the sync.
 
 `SummarizedActivityDTO` documents activity ID, local/GMT start, type, distance (meters), duration (seconds), average/max HR (bpm), average speed (m/s), elevation gain (meters), calories (kcal), running cadence (steps/min), power (watts), and training effects. Missing optional metrics stay blank/absent. Pace in the workbook is duration/distance; Garmin's speed-derived pace is recorded separately when available. No coordinates, route files, owner profile, or activity descriptions are stored.
 
