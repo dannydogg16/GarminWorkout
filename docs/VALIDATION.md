@@ -14,7 +14,7 @@ The imported run had no configured prescription match. Formula columns, effort c
 
 ## Offline and workbook validation
 
-- All **43 offline unit/integration tests passed**, including simulated CLI apply-latest and repeat import, formula preservation, missing metrics, duplicate IDs, exact/ambiguous matching, authentication renewal, plain-text token negotiation, bounded retries, minimum Google scopes, dry-run write prevention, concurrent-edit detection, native-duration conversion, preserved minute totals, prevention of double conversion, recorded RPE scaling, blank-effort backfill, and protection of existing ratings.
+- All **50 offline unit/integration tests passed**, including simulated CLI apply-latest and repeat import, formula preservation, missing metrics, duplicate IDs, exact/ambiguous matching, authentication renewal, plain-text token negotiation, bounded retries, minimum Google scopes, dry-run write prevention, concurrent-edit detection, native-duration conversion, preserved minute totals, prevention of double conversion, recorded RPE scaling, blank-effort backfill, protection of existing ratings, metric unit conversion, negative temperatures, missing sensor values, optional header guards, and existing-ID-only metric backfill.
 - The uploaded workbook's Run Log headers and **600 formulas** (I/J, rows 2–301) match the implementation. A synthetic activity planned writes only to A2:F2 and H2. The export was never changed or added to Git.
 - All 11 dependency wheel hashes matched PyPI metadata. Hash-checked install completed and was repeated successfully; `pip check` found no broken requirements.
 - Workflow YAML parsed, action references were verified as full commit hashes, and embedded shell scripts passed `bash -n`.
@@ -41,3 +41,14 @@ The original importer deliberately left subjective effort blank and read only th
 - [Repeat run](https://github.com/dannydogg16/GarminWorkout/actions/runs/40716675009) reported zero effort updates, zero new activities, and no writes needed.
 
 Both live runs passed all 43 tests. Manual ratings, formula columns, time formatting, and other existing row content were excluded from the backfill's single G-cell write.
+
+## Cadence, speed, maximum HR, and temperature: 2026-10-28
+
+The user appended the six agreed K:P headers. The live schema check accepted them. New imports and existing-ID updates now fill only blank metric cells; manual values, zero values, and formulas are preserved. Speed is mph, cadence steps/minute, maximum HR bpm, and recorded average temperature Fahrenheit. Missing average temperature is not inferred from min/max or weather.
+
+- [Live dry run](https://github.com/dannydogg16/GarminWorkout/actions/runs/40718816461) selected the existing activity and planned six blank-cell updates, with zero new rows.
+- [Live backfill](https://github.com/dannydogg16/GarminWorkout/actions/runs/40718926543) wrote all six metrics, including available average sensor temperature, and read them back successfully. Only K:P was written.
+- [Read-only cadence consistency check](https://github.com/dannydogg16/GarminWorkout/actions/runs/40719286077) confirmed both average and maximum cadence agree between the official activity-list and detail endpoints. No raw metrics were logged.
+- [Normal repeat sync](https://github.com/dannydogg16/GarminWorkout/actions/runs/40719546826) reported zero new rows, zero effort updates, zero additional metric updates, and no writes needed.
+
+All runs passed 50 tests. The explicit backfill modes can fill metrics for existing IDs regardless of activity age without importing additional Garmin history. Ordinary synchronization uses its normal overlapping date window. Other tabs, formula columns, existing ratings, notes, and duration/pace formatting were excluded from the metric backfill.

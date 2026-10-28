@@ -34,6 +34,10 @@ The official Personal API `SummaryDTO` includes `directWorkoutRpe` and `perceive
 
 `SummarizedActivityDTO` documents activity ID, local/GMT start, type, distance (meters), duration (seconds), average/max HR (bpm), average speed (m/s), elevation gain (meters), calories (kcal), running cadence (steps/min), power (watts), and training effects. Missing optional metrics stay blank/absent. Pace in the workbook is duration/distance; Garmin's speed-derived pace is recorded separately when available. No coordinates, route files, owner profile, or activity descriptions are stored.
 
+### Optional K:P metrics
+
+The official list schema includes `averageRunningCadenceInStepsPerMinute`, `maxRunningCadenceInStepsPerMinute`, `averageSpeed`, `maxSpeed`, and `maxHR`. The detail `SummaryDTO` documents `averageRunCadence`, `maxRunCadence`, `averageSpeed`, `maxSpeed`, `maxHR`, and `averageTemperature`; cadence is described as steps/minute, speed as metres/second, HR as bpm, and temperature as Celsius. The list does not expose average temperature: detail reads supply it. Conversion to mph divides m/s by 0.44704; conversion to Fahrenheit is C × 9/5 + 32, including valid subzero Celsius temperatures. No average is invented from min/max values. Normal sync prefers the list's explicit cadence/speed/HR fields and uses documented detail fields when absent; details also support the existing-ID-only backfill.
+
 Neither the fetched FAQ nor relevant Swagger operations specify a numeric request quota. No quota is invented. Requests are sequential, with bounded retries for 429 and selected 5xx/network errors, honoring `Retry-After` and stopping for cooldowns longer than 60 seconds. Other 4xx errors fail with sanitized messages. The default overlapping window is 30 days, with all pages searched, and IDs deduplicated; older late uploads require a manual backfill. Individual malformed required fields stop the batch before writing, rather than silently losing an activity.
 
 ## Google authentication references
