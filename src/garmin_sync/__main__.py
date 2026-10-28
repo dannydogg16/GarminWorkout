@@ -5,8 +5,48 @@ import sys
 from datetime import date, timedelta
 from .garmin import Garmin, recorded_effort
 from .http import JsonHttp, SyncError
-from .planner import normalize, plan, validate_prescriptions, existing_id
+from .planner import normalize, plan, validate_prescriptions, existing_id, metric_values, metric_layout, CAPACITY
 from .sheets import Sheets
+
+
+def finish(sheets, before, changes, apply):
+    if not apply:
+        print("Dry run complete: no spreadsheet writes. Use --apply only after reviewing the mapping.")
+        return
+    sheets.apply(before, changes)
+    after = sheets.read()
+    for change in changes:
+        row = int(re.search(r"[A-Z](\d+)", change["range"])[1])
+        column = re.search(r"!([A-Z]+)", change["range"])[1]
+        start = 0
+        for character in column:
+            start = start * 26 + ord(character) - 64
+        start -= 1
+        actual = after[row - 1][start:start + len(change["values"][0])]
+        actual += [""] * (len(change["values"][0]) - len(actual))
+        if actual != change["values"][0]:
+            raise SyncError("Post-write verification failed; inspect the Run Log before rerunning.")
+    print("Live write verified." if changes else "No writes needed.")
+
+
+def backfill_metrics(http, garmin, apply):
+    sheets = Sheets(http, write=apply)
+    before = sheets.read()
+    if not metric_layout(before):
+        raise SyncError("Add the six metric headers in Run Log K:P before backfilling.")
+    # Validate existing IDs and layout before spending requests on details.
+    plan(before, [], [])
+    activities = []
+    for row in before[1:CAPACITY]:
+        identifier = existing_id(row[1]) if len(row) > 1 else None
+        metrics = (list(row[10:16]) + [""] * 6)[:6]
+        if identifier and any(value in (None, "") for value in metrics):
+            activities.append({"id": identifier, "metrics": metric_values(garmin.summary(identifier), detailed=True)})
+    changes, imported, _ = plan(before, activities, [])
+    if imported:
+        raise SyncError("Backfill must not create activity rows.")
+    print(f"Metric backfill: selected {len(activities)} existing activities; blank metric cells to fill {len(changes)}; new activities 0.")
+    finish(sheets, before, changes, apply)
 
 
 def run():
@@ -15,6 +55,7 @@ def run():
     parser.add_argument("--latest", action="store_true", help="Select only the most recent run (even if already imported).")
     parser.add_argument("--format-times", action="store_true", help="Migrate duration/pace display to m:ss; requires --apply to write.")
     parser.add_argument("--inspect-effort", action="store_true", help="Read effort-field availability without logging ratings or writing cells.")
+    parser.add_argument("--backfill-metrics", action="store_true", help="Fill blank K:P metrics for existing IDs only; --apply writes.")
     parser.add_argument("--since", type=date.fromisoformat)
     parser.add_argument("--until", type=date.fromisoformat, default=date.today())
     parser.add_argument("--prescriptions", default="prescriptions.json")
@@ -33,6 +74,9 @@ def run():
         raise SyncError("Cannot read prescriptions JSON; check file syntax and path.") from None
     http = JsonHttp()
     garmin = Garmin(http)
+    if args.backfill_metrics:
+        backfill_metrics(http, garmin, args.apply)
+        return
     raw = garmin.activities(since.isoformat(), args.until.isoformat())
     activities = sorted([normalize(a) for a in raw], key=lambda a: (a["local"], int(a["id"])), reverse=True)
     if args.latest:
@@ -51,13 +95,21 @@ def run():
         return
     sheets = Sheets(http, write=args.apply)
     before = sheets.read()
+    metric_enabled = metric_layout(before)
     existing = {existing_id(row[1]): row for row in before[1:] if len(row) > 1 and row[1] not in (None, "")}
     for a in activities:
         row = existing.get(a["id"])
-        if row is None or len(row) <= 6 or row[6] in (None, ""):
-            a["effort"] = recorded_effort(garmin.summary(a["id"]))
-            if a["effort"] is not None:
-                a["extra"]["effort_source"] = "Garmin directWorkoutRpe / 10"
+        needs_effort = row is None or len(row) <= 6 or row[6] in (None, "")
+        needs_metrics = metric_enabled and (row is None or len(row) < 16 or any(v in (None, "") for v in row[10:16]))
+        if needs_effort or needs_metrics:
+            summary = garmin.summary(a["id"])
+            if needs_effort:
+                a["effort"] = recorded_effort(summary)
+                if a["effort"] is not None:
+                    a["extra"]["effort_source"] = "Garmin directWorkoutRpe / 10"
+            if needs_metrics:
+                detail_values = metric_values(summary, detailed=True)
+                a["metrics"] = [v if v is not None else fallback for v, fallback in zip(a["metrics"], detail_values)]
     names = {}
     # Only spend requests on workouts if configured matching requires their names.
     for a in activities:
@@ -68,25 +120,9 @@ def run():
           f"already present {len(activities) - len(imported)}.")
     effort_updates = sum(bool(re.search(r"!G[0-9]+$", change["range"])) for change in changes)
     print(f"Recorded effort updates: {effort_updates}; existing manual ratings preserved.")
-    if args.apply:
-        sheets.apply(before, changes)
-        after = sheets.read()
-        for change in changes:
-            row = int(re.search(r"[A-Z](\d+)", change["range"])[1])
-            column = re.search(r"!([A-Z]+)", change["range"])[1]
-            start = 0
-            for character in column:
-                start = start * 26 + ord(character) - 64
-            start -= 1
-            actual = after[row - 1][start:start + len(change["values"][0])]
-            actual += [""] * (len(change["values"][0]) - len(actual))
-            if actual != change["values"][0]:
-                raise SyncError("Post-write verification failed; inspect the Run Log before rerunning.")
-        # Verify formulas and untouched columns/tabs are protected by the write ranges;
-        # tests assert exact ranges. Concurrent manual edits cannot be made atomic by Sheets.
-        print("Live write verified." if changes else "No writes needed.")
-    else:
-        print("Dry run complete: no spreadsheet writes. Use --apply only after reviewing the mapping.")
+    metric_updates = sum(bool(re.search(r"![K-P][0-9]+$", change["range"])) for change in changes)
+    print(f"Additional metric updates: {metric_updates}; existing values and formulas preserved.")
+    finish(sheets, before, changes, args.apply)
 
 
 if __name__ == "__main__":

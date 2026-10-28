@@ -8,14 +8,43 @@ from .http import SyncError
 HEADERS = ["Date", "Activity ID", "Run type", "Distance (mi)", "Duration (m:ss)",
            "Avg HR (bpm)", "Effort (1–10)", "Notes / source", "Pace (min/mi)", "Week starting"]
 CAPACITY = 301  # Progress formulas only include rows 2:301.
+METRIC_HEADERS = ["Avg Cadence (spm)", "Max Cadence (spm)", "Avg Speed (mph)",
+                  "Max Speed (mph)", "Max Heart Rate (bpm)", "Avg Temperature (°F)"]
+LIST_METRICS = ["averageRunningCadenceInStepsPerMinute", "maxRunningCadenceInStepsPerMinute",
+                "averageSpeed", "maxSpeed", "maxHR", None]
+DETAIL_METRICS = ["averageRunCadence", "maxRunCadence", "averageSpeed", "maxSpeed", "maxHR", "averageTemperature"]
 
 
-def number(value):
+def number(value, *, signed=False):
     if value is None:
         return None
-    if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or value < 0:
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or (not signed and value < 0):
         raise SyncError("Garmin returned an invalid numeric metric; no writes performed.")
     return value
+
+
+def metric_values(source, *, detailed=False):
+    result = []
+    for index, field in enumerate(DETAIL_METRICS if detailed else LIST_METRICS):
+        value = number(source.get(field), signed=index == 5) if field else None
+        if value is not None:
+            if index in (2, 3):
+                value /= 0.44704  # Garmin m/s -> miles/hour.
+            elif index == 5:
+                value = value * 9 / 5 + 32  # Sensor Celsius -> Fahrenheit.
+        result.append(value)
+    return result
+
+
+def metric_layout(rows):
+    if not rows or rows[0][:10] != HEADERS:
+        raise SyncError("Live Run Log headers differ from the inspected workbook; no writes performed.")
+    columns = (list(rows[0][10:16]) + [""] * 6)[:6]
+    if all(value in (None, "") for value in columns):
+        return False
+    if columns != METRIC_HEADERS:
+        raise SyncError("Run Log K:P headers must match README's six metric headers and units; no writes performed.")
+    return True
 
 
 def normalize(item):
@@ -45,7 +74,8 @@ def normalize(item):
         extra[target] = number(item.get(source))
     return {"id": identifier, "date": local.date().isoformat(), "local": local.isoformat(),
             "type": key, "miles": miles, "minutes": minutes,
-            "hr": number(item.get("averageHR")), "extra": {k: v for k, v in extra.items() if v is not None}}
+            "hr": number(item.get("averageHR")), "metrics": metric_values(item),
+            "extra": {k: v for k, v in extra.items() if v is not None}}
 
 
 def validate_prescriptions(entries):
@@ -98,19 +128,18 @@ def existing_id(value):
 
 
 def plan(rows, activities, prescriptions, workout_names=None):
-    if not rows or rows[0][:10] != HEADERS:
-        raise SyncError("Live Run Log headers differ from the inspected workbook; no writes performed.")
+    metric_enabled = metric_layout(rows)
     workout_names = workout_names or {}
     ids, occupied, used_prescriptions, existing_rows = set(), set(), set(), {}
     for row_no, raw in enumerate(rows[1:], 2):
-        row = list(raw) + [""] * (10 - len(raw))
+        row = list(raw) + [""] * max(0, 16 - len(raw))
         identifier = existing_id(row[1])
         if identifier:
             if identifier in ids:
                 raise SyncError("Run Log already contains duplicate activity IDs; resolve before syncing.")
             ids.add(identifier)
             existing_rows[identifier] = (row_no, row)
-        if any(v not in ("", None) for v in row[:8]):
+        if any(v not in ("", None) for v in row[:8] + row[10:]):
             occupied.add(row_no)
         if isinstance(row[7], str):
             try:
@@ -139,15 +168,27 @@ def plan(rows, activities, prescriptions, workout_names=None):
         if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or not 1 <= value <= 10:
             raise SyncError("Recorded effort is outside the expected 1–10 scale.")
         changes.append({"range": f"'Run Log'!G{target}", "values": [[value]]})
+    def metrics(activity, target, row):
+        if not metric_enabled:
+            return
+        values = activity.get("metrics", [None] * 6)
+        if len(values) != 6:
+            raise SyncError("Unexpected metric count; no writes performed.")
+        for index, value in enumerate(values):
+            value = number(value, signed=index == 5)
+            if value is not None and row[10 + index] in (None, ""):
+                changes.append({"range": f"'Run Log'!{chr(75 + index)}{target}", "values": [[value]]})
     # A newly recorded RPE can arrive after the activity's initial import.
     # Fill only blank effort cells on existing rows; preserve all other content.
     updated_effort_ids = set()
     for a in activities:
         if a["id"] in existing_rows and a["id"] not in updated_effort_ids:
             row_no, row = existing_rows[a["id"]]
-            if row_no <= CAPACITY and row[6] in (None, ""):
-                effort(a, row_no)
-                updated_effort_ids.add(a["id"])
+            if row_no <= CAPACITY:
+                if row[6] in (None, ""):
+                    effort(a, row_no)
+                metrics(a, row_no, row)
+            updated_effort_ids.add(a["id"])
     for a in pending:
         if a["id"] in ids:
             continue
@@ -155,7 +196,7 @@ def plan(rows, activities, prescriptions, workout_names=None):
         if target is None:
             raise SyncError("Run Log's 300-row reporting capacity is full; extend formulas in a separate change.")
         row = list(rows[target - 1]) if target <= len(rows) else []
-        row += [""] * max(0, 10 - len(row))
+        row += [""] * max(0, 16 - len(row))
         if any(compact_formula(row[index]) != compact_formula(formula(col, target))
                for index, col in [(8, "I"), (9, "J")]):
             raise SyncError(f"Run Log row {target} has missing or unexpected I/J formulas; restore before syncing.")
@@ -173,6 +214,7 @@ def plan(rows, activities, prescriptions, workout_names=None):
         changes += [{"range": f"'Run Log'!A{target}:F{target}", "values": [["" if v is None else v for v in values]]},
                     {"range": f"'Run Log'!H{target}", "values": [[json.dumps(notes, separators=(",", ":"), allow_nan=False)]]}]
         effort(a, target)
+        metrics(a, target, row)
         imported.append(a["id"])
         occupied.add(target)
         ids.add(a["id"])

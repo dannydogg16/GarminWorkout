@@ -8,7 +8,7 @@ from urllib.error import HTTPError, URLError
 
 from garmin_sync.http import JsonHttp, NoRedirect, SyncError, ApiError
 from garmin_sync.garmin import Garmin, recorded_effort
-from garmin_sync.planner import HEADERS, formula, normalize, plan, validate_prescriptions
+from garmin_sync.planner import HEADERS, METRIC_HEADERS, formula, normalize, plan, validate_prescriptions, metric_values, metric_layout
 from garmin_sync.sheets import Sheets
 from garmin_sync.__main__ import run
 
@@ -21,6 +21,71 @@ def activity(identifier=123, **kw):
 
 def rows(count=300):
     return [HEADERS[:]] + [[""] * 8 + [formula("I", r), formula("J", r)] for r in range(2, count + 2)]
+
+
+def metric_rows():
+    result = rows()
+    result[0] += METRIC_HEADERS
+    for row in result[1:]: row += [""] * 6
+    return result
+
+
+class MetricTests(unittest.TestCase):
+    def test_documented_units_and_negative_temperature(self):
+        values = metric_values({"averageRunCadence": 170, "maxRunCadence": 190, "averageSpeed": 0.44704,
+                                "maxSpeed": 0.89408, "maxHR": 180, "averageTemperature": -10}, detailed=True)
+        self.assertEqual(values, [170, 190, 1, 2, 180, 14])
+        self.assertEqual(metric_values({"averageTemperature": 0}, detailed=True)[5], 32)
+
+    def test_missing_average_temperature_not_inferred_from_min_max(self):
+        values = metric_values({"averageRunningCadenceInStepsPerMinute": 175,
+                                "maxRunningCadenceInStepsPerMinute": 192, "minTemperature": 10, "maxTemperature": 20})
+        self.assertEqual(values[:2], [175, 192]); self.assertIsNone(values[5])
+
+    def test_header_units_guard_and_old_layout_compatibility(self):
+        self.assertFalse(metric_layout(rows()))
+        self.assertTrue(metric_layout(metric_rows()))
+        before = metric_rows(); before[0][12] = "Avg Speed (km/h)"
+        with self.assertRaises(SyncError): plan(before, [], [])
+
+    def test_backfill_only_blank_cells_preserves_manual_values_and_formulas(self):
+        before = metric_rows(); before[1][1] = "123"
+        before[1][10] = 0; before[1][12] = "=5+1"; before[1][14] = 181
+        original = copy.deepcopy(before)
+        changes, ids, _ = plan(before, [{"id": "123", "metrics": [170, 190, 6, 8, 180, 50]}], [])
+        self.assertEqual(ids, [])
+        self.assertEqual(changes, [{"range": "'Run Log'!L2", "values": [[190]]},
+                                   {"range": "'Run Log'!N2", "values": [[8]]},
+                                   {"range": "'Run Log'!P2", "values": [[50]]}])
+        self.assertEqual(before, original)
+
+    def test_new_activity_metrics_do_not_overwrite_partial_manual_row(self):
+        before = metric_rows(); before[1][10] = 175
+        a = normalize(activity()); a["metrics"] = [170, 190, 6, 8, 180, 50]
+        changes, _, _ = plan(before, [a], [])
+        self.assertEqual(changes[0]["range"], "'Run Log'!A3:F3")
+        self.assertEqual(changes[-1], {"range": "'Run Log'!P3", "values": [[50]]})
+
+    def test_missing_metrics_leave_cells_blank_and_repeat_is_idempotent(self):
+        before = metric_rows(); before[1][1] = "123"
+        a = {"id": "123", "metrics": [170, None, None, None, None, None]}
+        self.assertEqual(plan(before, [a], [])[0], [{"range": "'Run Log'!K2", "values": [[170]]}])
+        before[1][10] = 170
+        self.assertEqual(plan(before, [a], [])[0], [])
+
+    def test_cli_backfill_reads_existing_ids_only_and_verifies_column_p(self):
+        before = metric_rows(); before[1][1] = "123"
+        after = copy.deepcopy(before); after[1][15] = 50
+        with patch("garmin_sync.__main__.Garmin") as garmin, patch("garmin_sync.__main__.Sheets") as sheets, \
+             patch("sys.argv", ["sync", "--backfill-metrics", "--apply"]), patch("sys.stdout", new_callable=io.StringIO) as output:
+            garmin.return_value.summary.return_value = {"averageTemperature": 10}
+            sheets.return_value.read.side_effect = [before, after]
+            run()
+            garmin.return_value.activities.assert_not_called()
+            garmin.return_value.summary.assert_called_once_with("123")
+            sheets.return_value.apply.assert_called_once_with(before, [{"range": "'Run Log'!P2", "values": [[50]]}])
+            self.assertIn("new activities 0", output.getvalue())
+            self.assertIn("Live write verified", output.getvalue())
 
 
 class PlannerTests(unittest.TestCase):

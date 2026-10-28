@@ -25,7 +25,7 @@ class Sheets:
 
     def read(self):
         query = urlencode({"valueRenderOption": "FORMULA", "dateTimeRenderOption": "SERIAL_NUMBER"})
-        result = self.request("GET", "/values/" + quote("'Run Log'!A:J", safe="") + "?" + query)
+        result = self.request("GET", "/values/" + quote("'Run Log'!A:P", safe="") + "?" + query)
         if not isinstance(result, dict) or not isinstance(result.get("values"), list):
             raise SyncError("Google Sheets returned no Run Log values.")
         return result["values"]
