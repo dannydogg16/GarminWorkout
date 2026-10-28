@@ -16,6 +16,7 @@ on:
           - inspect-effort
           - dry-run-backfill-metrics
           - backfill-metrics
+          - inspect-metrics
       since:
         description: Optional earliest local activity date (YYYY-MM-DD); default last 30 days
         type: string
@@ -88,6 +89,7 @@ jobs:
               inspect-effort) args+=(--inspect-effort --latest) ;;
               dry-run-backfill-metrics) args+=(--backfill-metrics) ;;
               backfill-metrics) args+=(--backfill-metrics --apply) ;;
+              inspect-metrics) args+=(--inspect-metrics --latest) ;;
               *) echo 'Unknown sync mode.'; exit 1 ;;
             esac
           fi

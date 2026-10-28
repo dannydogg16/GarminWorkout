@@ -54,7 +54,7 @@ def run():
     parser.add_argument("--apply", action="store_true")
     parser.add_argument("--latest", action="store_true", help="Select only the most recent run (even if already imported).")
     parser.add_argument("--format-times", action="store_true", help="Migrate duration/pace display to m:ss; requires --apply to write.")
-    parser.add_argument("--inspect-effort", action="store_true", help="Read effort-field availability without logging ratings or writing cells.")
+    parser.add_argument("--inspect-effort", "--inspect-metrics", dest="inspect_effort", action="store_true", help="Read metric availability/consistency without logging values or writing cells.")
     parser.add_argument("--backfill-metrics", action="store_true", help="Fill blank K:P metrics for existing IDs only; --apply writes.")
     parser.add_argument("--since", type=date.fromisoformat)
     parser.add_argument("--until", type=date.fromisoformat, default=date.today())
@@ -91,6 +91,12 @@ def run():
             native = sum(isinstance(v, (int, float)) and not isinstance(v, bool) and 1 <= v <= 10 for v in values)
             scaled = sum(isinstance(v, (int, float)) and not isinstance(v, bool) and 10 < v <= 100 for v in values)
             print(f"Effort inspection: {field}; present {len(values)}; in 1-10 range {native}; in 11-100 range {scaled}.")
+        comparisons = [(a["metrics"][i], metric_values(s, detailed=True)[i])
+                       for a, s in zip(activities, summaries) for i in (0, 1)]
+        present = [(left, right) for left, right in comparisons if left is not None and right is not None]
+        equal = sum(abs(left - right) < 1e-8 for left, right in present)
+        doubled = sum(abs(left - 2 * right) < 1e-8 and left != right for left, right in present)
+        print(f"Cadence source inspection: compared {len(present)} fields; equal {equal}; list is twice detail {doubled}.")
         print("Effort inspection complete; no ratings logged and no spreadsheet writes.")
         return
     sheets = Sheets(http, write=args.apply)
