@@ -3,9 +3,9 @@ import json
 import re
 import sys
 from datetime import date, timedelta
-from .garmin import Garmin
+from .garmin import Garmin, recorded_effort
 from .http import JsonHttp, SyncError
-from .planner import normalize, plan, validate_prescriptions
+from .planner import normalize, plan, validate_prescriptions, existing_id
 from .sheets import Sheets
 
 
@@ -51,6 +51,13 @@ def run():
         return
     sheets = Sheets(http, write=args.apply)
     before = sheets.read()
+    existing = {existing_id(row[1]): row for row in before[1:] if len(row) > 1 and row[1] not in (None, "")}
+    for a in activities:
+        row = existing.get(a["id"])
+        if row is None or len(row) <= 6 or row[6] in (None, ""):
+            a["effort"] = recorded_effort(garmin.summary(a["id"]))
+            if a["effort"] is not None:
+                a["extra"]["effort_source"] = "Garmin directWorkoutRpe / 10"
     names = {}
     # Only spend requests on workouts if configured matching requires their names.
     for a in activities:
@@ -59,19 +66,25 @@ def run():
     changes, imported, matched = plan(before, activities, prescriptions, names)
     print(f"Selected {len(activities)} activities; new {len(imported)}; matched {matched}; "
           f"already present {len(activities) - len(imported)}.")
+    effort_updates = sum(bool(re.search(r"!G[0-9]+$", change["range"])) for change in changes)
+    print(f"Recorded effort updates: {effort_updates}; existing manual ratings preserved.")
     if args.apply:
         sheets.apply(before, changes)
         after = sheets.read()
         for change in changes:
             row = int(re.search(r"[A-Z](\d+)", change["range"])[1])
-            start = 0 if "!A" in change["range"] else 7
+            column = re.search(r"!([A-Z]+)", change["range"])[1]
+            start = 0
+            for character in column:
+                start = start * 26 + ord(character) - 64
+            start -= 1
             actual = after[row - 1][start:start + len(change["values"][0])]
             actual += [""] * (len(change["values"][0]) - len(actual))
             if actual != change["values"][0]:
                 raise SyncError("Post-write verification failed; inspect the Run Log before rerunning.")
         # Verify formulas and untouched columns/tabs are protected by the write ranges;
         # tests assert exact ranges. Concurrent manual edits cannot be made atomic by Sheets.
-        print("Live write verified." if imported else "No writes needed.")
+        print("Live write verified." if changes else "No writes needed.")
     else:
         print("Dry run complete: no spreadsheet writes. Use --apply only after reviewing the mapping.")
 

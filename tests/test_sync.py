@@ -7,7 +7,7 @@ from unittest.mock import Mock, patch
 from urllib.error import HTTPError, URLError
 
 from garmin_sync.http import JsonHttp, NoRedirect, SyncError, ApiError
-from garmin_sync.garmin import Garmin
+from garmin_sync.garmin import Garmin, recorded_effort
 from garmin_sync.planner import HEADERS, formula, normalize, plan, validate_prescriptions
 from garmin_sync.sheets import Sheets
 from garmin_sync.__main__ import run
@@ -24,6 +24,27 @@ def rows(count=300):
 
 
 class PlannerTests(unittest.TestCase):
+    def test_recorded_effort_on_new_activity(self):
+        a = normalize(activity()); a["effort"] = 7
+        changes, ids, _ = plan(rows(), [a], [])
+        self.assertEqual(ids, ["123"])
+        self.assertEqual(changes[-1], {"range": "'Run Log'!G2", "values": [[7]]})
+
+    def test_late_effort_fills_existing_blank_without_duplicate_or_other_edits(self):
+        before = rows(); before[1][:6] = [46000, "123", "running", 5, 0.03, 140]
+        before[1][7] = "Preserve these notes"
+        a = normalize(activity()); a["effort"] = 7
+        changes, ids, _ = plan(before, [a, a], [])
+        self.assertEqual(ids, [])
+        self.assertEqual(changes, [{"range": "'Run Log'!G2", "values": [[7]]}])
+        self.assertEqual(before[1][7], "Preserve these notes")
+
+    def test_existing_effort_never_overwritten(self):
+        for value in (6, "manual rating", "=5+1", 0):
+            before = rows(); before[1][1] = "123"; before[1][6] = value
+            a = normalize(activity()); a["effort"] = 7
+            self.assertEqual(plan(before, [a], [])[0], [])
+
     def test_units_and_formula_preservation(self):
         before = rows(); original = copy.deepcopy(before)
         changes, ids, matches = plan(before, [normalize(activity())], [])
@@ -156,6 +177,19 @@ class HttpTests(unittest.TestCase):
 
 
 class GarminTests(unittest.TestCase):
+    def test_recorded_rpe_scale_and_unavailable_values(self):
+        for raw, expected in [(10, 1), (70, 7), (100, 10), (25, 2.5)]:
+            self.assertEqual(recorded_effort({"directWorkoutRpe": raw}), expected)
+        for value in (None, 0, -1, 5, 101, "70", True, float("nan")):
+            self.assertIsNone(recorded_effort({"directWorkoutRpe": value}))
+        self.assertIsNone(recorded_effort({"perceivedWorkoutEffort": 70, "aerobicTrainingEffect": 4}))
+
+    @patch.dict(os.environ, {"GARMIN_API_KEY": "test-only-key"})
+    def test_detail_summary_endpoint(self):
+        http = Mock(); http.request.side_effect = [{"access_token": "one"}, {"summaryDTO": {"directWorkoutRpe": 70}}]
+        self.assertEqual(Garmin(http).summary("123"), {"directWorkoutRpe": 70})
+        self.assertTrue(http.request.call_args.args[2].endswith("/activity-service/activity/123"))
+
     @patch.dict(os.environ, {"GARMIN_API_KEY": "test-only-key"})
     def test_token_accepts_plain_text_and_does_not_require_json(self):
         http = Mock(); http.request.return_value = "test-only-token"
@@ -219,6 +253,19 @@ class SheetsTests(unittest.TestCase):
 
 
 class CliTests(unittest.TestCase):
+    def test_live_effort_backfill_readback_uses_column_g(self):
+        before = rows(); before[1][1] = "123"
+        after = copy.deepcopy(before); after[1][6] = 7
+        with patch("garmin_sync.__main__.Garmin") as garmin, patch("garmin_sync.__main__.Sheets") as sheets, \
+             patch("sys.argv", ["sync", "--latest", "--apply"]), patch("sys.stdout", new_callable=io.StringIO) as output:
+            garmin.return_value.activities.return_value = [activity()]
+            garmin.return_value.summary.return_value = {"directWorkoutRpe": 70}
+            sheets.return_value.read.side_effect = [before, after]
+            run()
+            sheets.return_value.apply.assert_called_once_with(before, [{"range": "'Run Log'!G2", "values": [[7]]}])
+            self.assertIn("Recorded effort updates: 1", output.getvalue())
+            self.assertIn("Live write verified", output.getvalue())
+
     def test_apply_latest_and_repeat_preserves_formulas(self):
         state = rows(); before_formulas = [r[8:] for r in state[1:]]
         client = Mock(); client.read.side_effect = lambda: copy.deepcopy(state)

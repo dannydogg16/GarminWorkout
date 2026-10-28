@@ -101,7 +101,7 @@ def plan(rows, activities, prescriptions, workout_names=None):
     if not rows or rows[0][:10] != HEADERS:
         raise SyncError("Live Run Log headers differ from the inspected workbook; no writes performed.")
     workout_names = workout_names or {}
-    ids, occupied, used_prescriptions = set(), set(), set()
+    ids, occupied, used_prescriptions, existing_rows = set(), set(), set(), {}
     for row_no, raw in enumerate(rows[1:], 2):
         row = list(raw) + [""] * (10 - len(raw))
         identifier = existing_id(row[1])
@@ -109,6 +109,7 @@ def plan(rows, activities, prescriptions, workout_names=None):
             if identifier in ids:
                 raise SyncError("Run Log already contains duplicate activity IDs; resolve before syncing.")
             ids.add(identifier)
+            existing_rows[identifier] = (row_no, row)
         if any(v not in ("", None) for v in row[:8]):
             occupied.add(row_no)
         if isinstance(row[7], str):
@@ -131,6 +132,22 @@ def plan(rows, activities, prescriptions, workout_names=None):
         for p in matches:
             frequency[p["id"]] = frequency.get(p["id"], 0) + 1
     changes, imported, matched = [], [], 0
+    def effort(activity, target):
+        value = activity.get("effort")
+        if value is None:
+            return
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or not 1 <= value <= 10:
+            raise SyncError("Recorded effort is outside the expected 1–10 scale.")
+        changes.append({"range": f"'Run Log'!G{target}", "values": [[value]]})
+    # A newly recorded RPE can arrive after the activity's initial import.
+    # Fill only blank effort cells on existing rows; preserve all other content.
+    updated_effort_ids = set()
+    for a in activities:
+        if a["id"] in existing_rows and a["id"] not in updated_effort_ids:
+            row_no, row = existing_rows[a["id"]]
+            if row_no <= CAPACITY and row[6] in (None, ""):
+                effort(a, row_no)
+                updated_effort_ids.add(a["id"])
     for a in pending:
         if a["id"] in ids:
             continue
@@ -152,9 +169,10 @@ def plan(rows, activities, prescriptions, workout_names=None):
         serial = (date.fromisoformat(a["date"]) - date(1899, 12, 30)).days
         values = [serial, a["id"], match["run_type"] if match else a["type"],
                   a["miles"], None if a["minutes"] is None else a["minutes"] / 1440, a["hr"]]
-        # G (subjective effort), I/J (formulas), other tabs and formatting never written.
+        # I/J formulas stay untouched. G is written only for a recorded RPE.
         changes += [{"range": f"'Run Log'!A{target}:F{target}", "values": [["" if v is None else v for v in values]]},
                     {"range": f"'Run Log'!H{target}", "values": [[json.dumps(notes, separators=(",", ":"), allow_nan=False)]]}]
+        effort(a, target)
         imported.append(a["id"])
         occupied.add(target)
         ids.add(a["id"])

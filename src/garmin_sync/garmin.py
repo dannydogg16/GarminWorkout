@@ -7,6 +7,19 @@ TOKEN_PATH = "/personalapitoken-service/personal-api/personal-api-key/token"
 SEARCH_PATH = "/activitylist-service/activities/search/activities"
 
 
+def recorded_effort(summary):
+    """Garmin's recorded workout RPE uses Borg CR10 multiplied by ten.
+
+    The official FIT session workout_rpe profile documents the 10x encoding.
+    Only directWorkoutRpe is used; other effort/training-effect fields have
+    different or undocumented semantics. Missing/zero/invalid values stay blank.
+    """
+    raw = summary.get("directWorkoutRpe")
+    if isinstance(raw, bool) or not isinstance(raw, int) or not 10 <= raw <= 100:
+        return None
+    return raw / 10
+
+
 class Garmin:
     def __init__(self, http):
         self.http = http
