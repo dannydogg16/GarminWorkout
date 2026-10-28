@@ -14,13 +14,19 @@ The uploaded workbook has Progress, Program, Strength Log, Run Log, and Profile 
 | B Activity ID | Garmin ID as text; deduplication key |
 | C Run type | Garmin running subtype, or explicitly matched prescription's run type |
 | D Distance (mi) | Meters ÷ 1609.344 |
-| E Duration (min) | Timer duration seconds ÷ 60; not elapsed duration |
+| E Duration (m:ss) | Native Sheets duration (timer seconds ÷ 86400), displayed as elapsed minutes:seconds |
 | F Avg HR (bpm) | Available average HR, otherwise blank |
 | G Effort (1–10) | Untouched; subjective effort is never inferred |
 | H Notes / source | JSON containing source, local start, max HR, pace, optional elevation/calories/cadence/power/training effects, match status |
-| I Pace (min/mi), J Week starting | Existing formulas retained and checked before a row is used |
+| I Pace (min/mi), J Week starting | Existing formulas retained and checked before a row is used; pace displays as minutes:seconds per mile |
 
 Only unused A:H rows 2–301 are eligible. No append-to-bottom API is used because prefilled formulas would push entries beyond reporting ranges. Existing manual entries are never merged or overwritten. Existing IDs anywhere in Run Log are checked. Changed headers, duplicate existing IDs, invalid metrics, missing target formulas, or full capacity stop the import before writes. Missing optional metrics are left blank. All writes use RAW, so text cannot execute spreadsheet formulas. No format, other tab, existing formula, or subjective effort cell is updated. Profile's existing integration-status text is also left unchanged.
+
+Duration and pace use native numeric time values with `[m]:ss` formatting, so values remain usable in calculations and durations over an hour display total minutes (for example, `72:05`). Progress duration summaries still report decimal **minutes** as labeled: their sum formulas multiply the underlying days by 1440. Numeric pace metrics in JSON notes remain explicitly labeled in min/mi.
+
+For a manual duration entry, type hours:minutes:seconds, for example `0:42:17`; it displays as `42:17`. Do not enter decimal minutes into the new duration column or type `42:17` as an input, which Sheets can interpret as hours:minutes.
+
+The explicit one-time **dry-run-format-times / format-times** workflow modes inspect the live workbook, convert legacy decimal-minute durations, update only the dependent Progress duration formulas and E header, and format Run Log E/I. The applied migration uses one atomic Sheets batch and verifies duration values, calculated Progress totals, unchanged unrelated cells/formulas, and displayed minutes:seconds. It is safe to rerun: the new header and validated formulas identify already-converted units. Ordinary imports never perform this migration or change formulas/formatting. Unknown layout/formulas or text durations stop migration for review.
 
 ## 1. Review the code in GitHub
 
