@@ -2,7 +2,7 @@
 
 Official Garmin Connect Personal API → your existing **online** [Danny Training Tracker](https://docs.google.com/spreadsheets/d/1YThajlerH-ftK-GfINcCCgi9arqCNLWOycBIvbbFJUA/edit). The Excel export was used only to inspect structure; it is not uploaded, replaced, or committed.
 
-Implementation and offline tests are available. **Live authentication and a real activity write remain unverified until you configure the credentials below. Daily imports are disabled unless `ENABLE_DAILY_SYNC=true`.** Garmin documentation findings and remaining token-schema uncertainty are in [API verification](docs/API_VERIFICATION.md).
+**Live authentication, a one-activity import, and repeat-run deduplication passed on 2026-10-28. Daily imports remain gated by `ENABLE_DAILY_SYNC=true`; review the imported row before enabling them.** See [validation evidence](docs/VALIDATION.md) and [official API verification](docs/API_VERIFICATION.md).
 
 ## Spreadsheet mapping
 
@@ -124,4 +124,4 @@ The lock targets CPython 3.12 on Linux x86_64 and pins transitive dependencies w
 - 429/selected 5xx/network errors: bounded retries, honoring short cooldowns; long cooldowns stop. Reruns use ID deduplication and fixed ranges, never append retries. If a write succeeds but its response is lost, the same payload can be retried without adding another row.
 - A second read detects edits made while planning. Sheets does not offer an atomic compare-and-set on these values. Workflow concurrency serializes its own runs, but a human or another integration could still edit between the final read and write. Avoid simultaneous writers; check version history if a run is interrupted.
 - At row 301, stop. Extend Progress summary ranges and Run Log formulas in a separate reviewed spreadsheet change before raising the import capacity. This integration never silently extends or rewrites formulas.
-- Live layout/authentication, Google IAM commands in your project, the undocumented Garmin token response shape, and actual GitHub scheduling remain external validation steps. No live success is claimed until you run the one-activity test.
+- Live Garmin and Google authentication, layout checks, a one-activity write/readback, and repeat-run deduplication have passed; see the validation evidence. Human review of the imported row and actual scheduled execution remain outstanding. Changes to credentials, account region, or sheet layout can require revalidation.

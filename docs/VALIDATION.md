@@ -1,12 +1,23 @@
 # Validation status
 
-Validated in the current cloud machine on 2026-10-27:
+## Live validation: 2026-10-28
 
-- All **32 offline unit/integration tests passed**, including a simulated CLI apply-latest and repeat import, preservation of formula columns, missing metrics, duplicate IDs, exact/ambiguous matching, authentication renewal, bounded retries, minimum Google scopes, dry-run write prevention, and concurrent-edit detection.
-- The actual uploaded workbook's Run Log headers and **600 formulas** (I/J, rows 2–301) match the implementation. A synthetic activity planned writes only to A2:F2 and H2. The export was never changed or added to Git.
+The user configured the Garmin repository secret and keyless Google access. These actual GitHub Actions runs completed successfully:
+
+- [One-activity dry run](https://github.com/dannydogg16/GarminWorkout/actions/runs/40710694752): authenticated with Garmin and Google, read the live Run Log, validated layout and target formulas, selected one new running activity, and performed no writes.
+- [One-activity write test](https://github.com/dannydogg16/GarminWorkout/actions/runs/40710799573): imported one running activity into the existing online spreadsheet and verified written values by reading them back.
+- [Repeat import](https://github.com/dannydogg16/GarminWorkout/actions/runs/40710922702): reported one activity already present, zero new activities, and no writes needed.
+
+The first dry run failed with Garmin HTTP 406 before any sheet write. The token request was corrected to use `Accept: */*` and permit a text token response; subsequent runs passed. No credentials, activity IDs, or metrics were logged during diagnosis. All three successful runs also passed the 34 offline tests.
+
+The imported run had no configured prescription match. Formula columns, effort cells, formatting, and other tabs were excluded from write ranges. Human inspection of the imported row and actual daily scheduled execution remain outstanding. Daily synchronization has not been enabled by the assistant; keep `ENABLE_DAILY_SYNC=false` until review. GitHub's Actions secret/variable management API returned HTTP 403 to this session, so stored values cannot be independently inspected or changed here. Successful live authentication confirms the bindings used by the workflow work.
+
+## Offline and workbook validation
+
+- All **34 offline unit/integration tests passed**, including simulated CLI apply-latest and repeat import, formula preservation, missing metrics, duplicate IDs, exact/ambiguous matching, authentication renewal, plain-text token negotiation, bounded retries, minimum Google scopes, dry-run write prevention, and concurrent-edit detection.
+- The uploaded workbook's Run Log headers and **600 formulas** (I/J, rows 2–301) match the implementation. A synthetic activity planned writes only to A2:F2 and H2. The export was never changed or added to Git.
 - All 11 dependency wheel hashes matched PyPI metadata. Hash-checked install completed and was repeated successfully; `pip check` found no broken requirements.
-- Workflow YAML parsed successfully, all action references were verified as full commit hashes, and embedded shell scripts passed `bash -n`.
+- Workflow YAML parsed, action references were verified as full commit hashes, and embedded shell scripts passed `bash -n`.
 - Garmin's official Personal API guide, FAQ, and embedded OpenAPI specification were fetched and inspected. Google Sheets scope and Google federation/action documentation were also fetched.
-- A live CLI attempt stopped safely because no Garmin key was injected into this machine. Existing machine Google credentials failed authentication; the online sheet's headers/content have not been verified. Attempts to list repository Actions secret/variable names returned HTTP 403; existing GitHub bindings cannot be confirmed from this session.
 
-Not yet validated: actual Garmin token response and activities, Google federation provisioning in the user's project, live Google read/write permissions, real one-activity import/deduplication, and scheduled execution. No online spreadsheet writes have been attempted. See README's staged live test before enabling daily sync. Publishing source code and saving the cloud environment draft do not establish that any of these live operations work.
+Live credentials are available to the GitHub workflow, not this cloud machine. Local API execution still needs separate authorized credentials. Publishing source code and saving the cloud environment draft do not publish a new environment snapshot or prove scheduled execution.

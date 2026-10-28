@@ -14,7 +14,7 @@ This is the official personal-use API for one user's own data. Commercial applic
 
 Exchange the key using `POST https://personal.connectapi.garmin.com/personalapitoken-service/personal-api/personal-api-key/token`, with `Authorization: ApiKey <key>`. Use the resulting OAuth2 token as `Authorization: Bearer <token>`. Tokens last 24 hours or until key expiry, whichever occurs first. No refresh tokens are supported. The sync obtains a token each invocation and renews it once following an activity-request 401.
 
-The public token guide does not document the JSON response schema. The implementation accepts `access_token` or `accessToken` and fails closed otherwise. This adapter still needs validation with Danny's actual key; no successful authenticated request is claimed. No password login, browser-cookie reuse, or unofficial scraping is used.
+The public token guide does not document the response schema. Forcing `Accept: application/json` returned HTTP 406 with the user's key during the first live test. Using `Accept: */*` resolved the error, and authenticated activity retrieval passed on 2026-10-28. The token adapter accepts a plain-text token, JSON string, or an object with `access_token`/`accessToken`; other API calls still require JSON. Tokens and response payloads are never logged. No password login, browser-cookie reuse, or unofficial scraping is used.
 
 The OpenAPI servers are `https://personal.connectapi.garmin.com` and the China-region `.cn` equivalent. This integration fixes the global `.com` server; a China-region account requires a separate reviewed configuration change. Credentials are never sent to an arbitrary configurable host.
 

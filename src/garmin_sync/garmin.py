@@ -19,8 +19,8 @@ class Garmin:
         result = self.http.request("Garmin token", "POST", BASE + TOKEN_PATH,
                                    {"Authorization": "ApiKey " + self.key, "Accept": "*/*"},
                                    allow_text=True)
-        # The public guide does not specify a response schema. Accept the
-        # conventional OAuth field and Garmin's camelCase field; fail closed.
+        # The public guide does not specify a response schema. Accept text or
+        # recognized OAuth fields; forcing JSON negotiation causes HTTP 406.
         token = ((result.get("access_token") or result.get("accessToken"))
                  if isinstance(result, dict) else result if isinstance(result, str) else None)
         if not isinstance(token, str) or not token or any(c.isspace() for c in token):
