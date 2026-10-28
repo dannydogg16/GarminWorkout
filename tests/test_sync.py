@@ -114,6 +114,14 @@ class PlannerTests(unittest.TestCase):
 
 
 class HttpTests(unittest.TestCase):
+    def test_token_plain_text_is_opt_in(self):
+        opener = Mock(); response = Mock(); response.read.return_value = b'test-only-token'
+        context = Mock(); context.__enter__ = Mock(return_value=response); context.__exit__ = Mock(return_value=False)
+        opener.open.return_value = context
+        http = JsonHttp(opener)
+        with self.assertRaises(SyncError): http.request("test", "POST", "https://example.com", {})
+        self.assertEqual(http.request("test", "POST", "https://example.com", {}, allow_text=True), "test-only-token")
+
     def test_retry_rate_limit_then_success(self):
         opener = Mock(); result = Mock(); result.read.return_value = b'{"ok":true}'
         response = Mock(); response.__enter__ = Mock(return_value=result); response.__exit__ = Mock(return_value=False)
@@ -148,6 +156,14 @@ class HttpTests(unittest.TestCase):
 
 
 class GarminTests(unittest.TestCase):
+    @patch.dict(os.environ, {"GARMIN_API_KEY": "test-only-key"})
+    def test_token_accepts_plain_text_and_does_not_require_json(self):
+        http = Mock(); http.request.return_value = "test-only-token"
+        client = Garmin(http); client.authenticate()
+        self.assertEqual(client.token, "test-only-token")
+        self.assertEqual(http.request.call_args.args[3]["Accept"], "*/*")
+        self.assertTrue(http.request.call_args.kwargs["allow_text"])
+
     @patch.dict(os.environ, {"GARMIN_API_KEY": "test-only-key"})
     def test_expired_token_renewed_once(self):
         http = Mock(); http.request.side_effect = [{"access_token": "one"}, ApiError("Garmin", 401), {"accessToken": "two"}, []]

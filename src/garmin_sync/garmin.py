@@ -17,10 +17,12 @@ class Garmin:
 
     def authenticate(self):
         result = self.http.request("Garmin token", "POST", BASE + TOKEN_PATH,
-                                   {"Authorization": "ApiKey " + self.key})
+                                   {"Authorization": "ApiKey " + self.key, "Accept": "*/*"},
+                                   allow_text=True)
         # The public guide does not specify a response schema. Accept the
         # conventional OAuth field and Garmin's camelCase field; fail closed.
-        token = (result.get("access_token") or result.get("accessToken")) if isinstance(result, dict) else None
+        token = ((result.get("access_token") or result.get("accessToken"))
+                 if isinstance(result, dict) else result if isinstance(result, str) else None)
         if not isinstance(token, str) or not token or any(c.isspace() for c in token):
             raise SyncError("Garmin token response has no recognized access token; check current official docs.")
         self.token = token

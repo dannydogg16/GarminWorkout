@@ -34,7 +34,7 @@ class JsonHttp:
         self.opener = opener or build_opener(NoRedirect())
         self.sleep = sleep
 
-    def request(self, service, method, url, headers, body=None):
+    def request(self, service, method, url, headers, body=None, *, allow_text=False):
         if not url.startswith("https://"):
             raise SyncError("HTTPS is required.")
         data = None if body is None else json.dumps(body, allow_nan=False).encode()
@@ -51,6 +51,11 @@ class JsonHttp:
                 try:
                     return json.loads(raw)
                 except (ValueError, UnicodeError):
+                    if allow_text and len(raw) <= 65_536:
+                        try:
+                            return raw.decode("utf-8").strip()
+                        except UnicodeError:
+                            pass
                     raise SyncError(f"{service}: invalid JSON response.") from None
             except HTTPError as error:
                 status = error.code
