@@ -65,7 +65,7 @@ class JsonHttp:
                     raise ApiError(service, status) from None
                 delay = self.retry_delay(retry, attempt)
                 if delay > 60:
-                    raise SyncError(f"{service}: retry requested later; rerun after cooldown.")
+                    raise SyncError(f"{service}: HTTP {status}; server requested {delay:.0f}s cooldown; rerun after cooldown.")
                 self.sleep(delay)
             except (URLError, TimeoutError, OSError):
                 if attempt == 3:

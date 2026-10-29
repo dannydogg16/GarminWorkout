@@ -1,4 +1,5 @@
 import os
+import time
 from urllib.parse import urlencode
 from .http import ApiError, SyncError
 
@@ -21,15 +22,27 @@ def recorded_effort(summary):
 
 
 class Garmin:
-    def __init__(self, http):
+    def __init__(self, http, *, interval=10, clock=time.monotonic, sleep=time.sleep):
         self.http = http
+        self.interval, self.clock, self.sleep = interval, clock, sleep
+        self.last_request = None
         self.key = os.environ.get("GARMIN_API_KEY", "")
         if not self.key:
             raise SyncError("Set GARMIN_API_KEY securely; never pass it as a command argument.")
         self.token = None
 
+    def _request(self, *args, **kwargs):
+        # Conservative client pacing, not a claim about Garmin's unpublished
+        # quota. Include authentication and pagination as well as details.
+        if self.last_request is not None:
+            delay = self.interval - (self.clock() - self.last_request)
+            if delay > 0:
+                self.sleep(delay)
+        self.last_request = self.clock()
+        return self.http.request(*args, **kwargs)
+
     def authenticate(self):
-        result = self.http.request("Garmin token", "POST", BASE + TOKEN_PATH,
+        result = self._request("Garmin token", "POST", BASE + TOKEN_PATH,
                                    {"Authorization": "ApiKey " + self.key, "Accept": "*/*"},
                                    allow_text=True)
         # The public guide does not specify a response schema. Accept text or
@@ -44,13 +57,13 @@ class Garmin:
         if self.token is None:
             self.authenticate()
         try:
-            return self.http.request("Garmin", "GET", BASE + path,
+            return self._request("Garmin", "GET", BASE + path,
                                      {"Authorization": "Bearer " + self.token})
         except ApiError as error:
             if error.status != 401:
                 raise
             self.authenticate()
-            return self.http.request("Garmin", "GET", BASE + path,
+            return self._request("Garmin", "GET", BASE + path,
                                      {"Authorization": "Bearer " + self.token})
 
     def activities(self, since, until):

@@ -242,6 +242,18 @@ class HttpTests(unittest.TestCase):
 
 
 class GarminTests(unittest.TestCase):
+    @patch.dict(os.environ, {"GARMIN_API_KEY": "test-only-key"})
+    def test_pacing_covers_token_search_and_details(self):
+        now = [0.0]; slept = []
+        def sleep(delay):
+            slept.append(delay); now[0] += delay
+        http = Mock(); http.request.side_effect = [{"access_token": "one"}, [], {"summaryDTO": {}}]
+        client = Garmin(http, clock=lambda: now[0], sleep=sleep)
+        client.activities("2026-10-01", "2026-10-27")
+        client.summary("123")
+        self.assertEqual(slept, [10, 10])
+        self.assertEqual(http.request.call_count, 3)
+
     def test_recorded_rpe_scale_and_unavailable_values(self):
         for raw, expected in [(10, 1), (70, 7), (100, 10), (25, 2.5)]:
             self.assertEqual(recorded_effort({"directWorkoutRpe": raw}), expected)
@@ -252,13 +264,13 @@ class GarminTests(unittest.TestCase):
     @patch.dict(os.environ, {"GARMIN_API_KEY": "test-only-key"})
     def test_detail_summary_endpoint(self):
         http = Mock(); http.request.side_effect = [{"access_token": "one"}, {"summaryDTO": {"directWorkoutRpe": 70}}]
-        self.assertEqual(Garmin(http).summary("123"), {"directWorkoutRpe": 70})
+        self.assertEqual(Garmin(http, interval=0).summary("123"), {"directWorkoutRpe": 70})
         self.assertTrue(http.request.call_args.args[2].endswith("/activity-service/activity/123"))
 
     @patch.dict(os.environ, {"GARMIN_API_KEY": "test-only-key"})
     def test_token_accepts_plain_text_and_does_not_require_json(self):
         http = Mock(); http.request.return_value = "test-only-token"
-        client = Garmin(http); client.authenticate()
+        client = Garmin(http, interval=0); client.authenticate()
         self.assertEqual(client.token, "test-only-token")
         self.assertEqual(http.request.call_args.args[3]["Accept"], "*/*")
         self.assertTrue(http.request.call_args.kwargs["allow_text"])
@@ -266,14 +278,14 @@ class GarminTests(unittest.TestCase):
     @patch.dict(os.environ, {"GARMIN_API_KEY": "test-only-key"})
     def test_expired_token_renewed_once(self):
         http = Mock(); http.request.side_effect = [{"access_token": "one"}, ApiError("Garmin", 401), {"accessToken": "two"}, []]
-        self.assertEqual(Garmin(http).activities("2026-10-01", "2026-10-27"), [])
+        self.assertEqual(Garmin(http, interval=0).activities("2026-10-01", "2026-10-27"), [])
         self.assertEqual(http.request.call_count, 4)
         self.assertEqual(http.request.call_args.args[3], {"Authorization": "Bearer two"})
 
     @patch.dict(os.environ, {"GARMIN_API_KEY": "test-only-key"})
     def test_paginate_and_deduplicate(self):
         http = Mock(); http.request.side_effect = [{"access_token": "one"}, [activity(i) for i in range(1, 100)], [activity(99), activity(100)]]
-        result = Garmin(http).activities("2026-10-01", "2026-10-27")
+        result = Garmin(http, interval=0).activities("2026-10-01", "2026-10-27")
         self.assertEqual(len(result), 100)
         self.assertIn("start=99", http.request.call_args.args[2])
         self.assertIn("activityType=running", http.request.call_args.args[2])
@@ -281,7 +293,7 @@ class GarminTests(unittest.TestCase):
     @patch.dict(os.environ, {"GARMIN_API_KEY": "test-only-key"})
     def test_token_schema_failure_sanitized(self):
         http = Mock(); http.request.return_value = {"error": "SECRET"}
-        with self.assertRaises(SyncError) as caught: Garmin(http).authenticate()
+        with self.assertRaises(SyncError) as caught: Garmin(http, interval=0).authenticate()
         self.assertNotIn("SECRET", str(caught.exception))
 
 
