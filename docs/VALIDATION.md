@@ -14,7 +14,7 @@ The imported run had no configured prescription match. Formula columns, effort c
 
 ## Offline and workbook validation
 
-- All **50 offline unit/integration tests passed**, including simulated CLI apply-latest and repeat import, formula preservation, missing metrics, duplicate IDs, exact/ambiguous matching, authentication renewal, plain-text token negotiation, bounded retries, minimum Google scopes, dry-run write prevention, concurrent-edit detection, native-duration conversion, preserved minute totals, prevention of double conversion, recorded RPE scaling, blank-effort backfill, protection of existing ratings, metric unit conversion, negative temperatures, missing sensor values, optional header guards, and existing-ID-only metric backfill.
+- All **51 offline unit/integration tests passed**, including simulated CLI apply-latest and repeat import, formula preservation, missing metrics, duplicate IDs, exact/ambiguous matching, authentication renewal, plain-text token negotiation, bounded retries, minimum Google scopes, dry-run write prevention, concurrent-edit detection, native-duration conversion, preserved minute totals, prevention of double conversion, recorded RPE scaling, blank-effort backfill, protection of existing ratings, metric unit conversion, negative temperatures, missing sensor values, optional header guards, and existing-ID-only metric backfill.
 - The uploaded workbook's Run Log headers and **600 formulas** (I/J, rows 2–301) match the implementation. A synthetic activity planned writes only to A2:F2 and H2. The export was never changed or added to Git.
 - All 11 dependency wheel hashes matched PyPI metadata. Hash-checked install completed and was repeated successfully; `pip check` found no broken requirements.
 - Workflow YAML parsed, action references were verified as full commit hashes, and embedded shell scripts passed `bash -n`.
@@ -52,3 +52,13 @@ The user appended the six agreed K:P headers. The live schema check accepted the
 - [Normal repeat sync](https://github.com/dannydogg16/GarminWorkout/actions/runs/40719546826) reported zero new rows, zero effort updates, zero additional metric updates, and no writes needed.
 
 All runs passed 50 tests. The explicit backfill modes can fill metrics for existing IDs regardless of activity age without importing additional Garmin history. Ordinary synchronization uses its normal overlapping date window. Other tabs, formula columns, existing ratings, notes, and duration/pace formatting were excluded from the metric backfill.
+
+## Daily enablement and full-batch validation: 2026-10-29
+
+The user's screenshot showed repository variable `ENABLE_DAILY_SYNC=true`. The prior skipped scheduled attempt was not evidence that the current setting was disabled. [Rerunning that scheduled event](https://github.com/dannydogg16/GarminWorkout/actions/runs/40733342002/attempts/2) passed the enable/branch gate and authenticated successfully, then stopped on a Garmin-requested cooldown before the spreadsheet write. The older error message did not retain the HTTP status or requested delay, so the exact original cooldown category cannot be established from that log.
+
+The client now conservatively spaces Garmin API operations ten seconds apart, including authentication, searches, pagination, and activity details. This is a pacing policy rather than a claim about Garmin's unpublished numeric quota. Long cooldown failures now report the status and requested delay without exposing headers or payloads. A new fake-clock test verifies spacing across token, search and detail calls. All 51 tests passed.
+
+[The full live sync with pacing](https://github.com/dannydogg16/GarminWorkout/actions/runs/40898190140) succeeded: 16 selected activities, 15 new rows, one existing activity, 15 recorded-effort writes and 90 additional-metric writes, all verified by readback. This exercised the full overlapping-window import used by daily sync, rather than only the one-activity test. It was manually dispatched; a fresh timer-driven run with the updated code has not yet been observed. Daily enablement was not changed by the assistant.
+
+[The full repeat run](https://github.com/dannydogg16/GarminWorkout/actions/runs/40898877710) also passed: all 16 activities were already present, with zero new rows, zero effort updates, zero additional metric updates, and no writes needed.

@@ -2,7 +2,7 @@
 
 Official Garmin Connect Personal API → your existing **online** [Danny Training Tracker](https://docs.google.com/spreadsheets/d/1YThajlerH-ftK-GfINcCCgi9arqCNLWOycBIvbbFJUA/edit). The Excel export was used only to inspect structure; it is not uploaded, replaced, or committed.
 
-**Live authentication, a one-activity import, and repeat-run deduplication passed on 2026-10-28. Daily imports remain gated by `ENABLE_DAILY_SYNC=true`; review the imported row before enabling them.** See [validation evidence](docs/VALIDATION.md) and [official API verification](docs/API_VERIFICATION.md).
+**Daily sync is enabled. On 2026-10-29, the scheduled-event enable check passed and a full live sync caught up 15 missing runs from the overlapping 30-day window, with readback verification.** Garmin requests are now paced to reduce bursts after an earlier server cooldown. Fresh timer-driven execution after that update remains to be observed. See [validation evidence](docs/VALIDATION.md) and [official API verification](docs/API_VERIFICATION.md).
 
 ## Spreadsheet mapping
 
@@ -139,7 +139,8 @@ The lock targets CPython 3.12 on Linux x86_64 and pins transitive dependencies w
 ## Failure handling and limits
 
 - 401: check Garmin expiry or Google federation configuration; Garmin token renewal is attempted once. 403: check account restrictions, spreadsheet sharing, Sheets API enablement, and protected ranges. Errors omit raw responses and headers.
-- 429/selected 5xx/network errors: bounded retries, honoring short cooldowns; long cooldowns stop. Reruns use ID deduplication and fixed ranges, never append retries. If a write succeeds but its response is lost, the same payload can be retried without adding another row.
+- Garmin requests are spaced at least 10 seconds apart, including token exchange, pagination and detail reads. This is a conservative client policy; Garmin's numeric quota is not documented. A full historical catch-up takes longer than the one-activity test.
+- 429/selected 5xx/network errors: bounded retries, honoring short cooldowns; long cooldowns stop and report the server-requested delay. Reruns use ID deduplication and fixed ranges, never append retries. If a write succeeds but its response is lost, the same payload can be retried without adding another row.
 - A second read detects edits made while planning. Sheets does not offer an atomic compare-and-set on these values. Workflow concurrency serializes its own runs, but a human or another integration could still edit between the final read and write. Avoid simultaneous writers; check version history if a run is interrupted.
 - At row 301, stop. Extend Progress summary ranges and Run Log formulas in a separate reviewed spreadsheet change before raising the import capacity. This integration never silently extends or rewrites formulas.
 - Live Garmin and Google authentication, layout checks, a one-activity write/readback, and repeat-run deduplication have passed; see the validation evidence. Human review of the imported row and actual scheduled execution remain outstanding. Changes to credentials, account region, or sheet layout can require revalidation.
