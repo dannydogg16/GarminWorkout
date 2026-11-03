@@ -27,7 +27,8 @@ on:
         type: string
         required: false
   schedule:
-    - cron: '17 11 * * *'
+    - cron: '17 7,8,9 * * *'
+      timezone: 'America/New_York'
 
 permissions: {}
 
