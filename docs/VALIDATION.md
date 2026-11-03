@@ -62,3 +62,11 @@ The client now conservatively spaces Garmin API operations ten seconds apart, in
 [The full live sync with pacing](https://github.com/dannydogg16/GarminWorkout/actions/runs/40898190140) succeeded: 16 selected activities, 15 new rows, one existing activity, 15 recorded-effort writes and 90 additional-metric writes, all verified by readback. This exercised the full overlapping-window import used by daily sync, rather than only the one-activity test. It was manually dispatched; a fresh timer-driven run with the updated code has not yet been observed. Daily enablement was not changed by the assistant.
 
 [The full repeat run](https://github.com/dannydogg16/GarminWorkout/actions/runs/40898877710) also passed: all 16 activities were already present, with zero new rows, zero effort updates, zero additional metric updates, and no writes needed.
+
+## Exact-date status check and import: 2026-11-03
+
+GitHub reported successful timer-driven runs on October 29–November 2, confirming that scheduled execution with the pacing update has occurred. The November 2 run's detailed logs could not be retrieved, so its success alone did not establish that a particular activity had been imported.
+
+At the user's request, [a read-only exact-date check](https://github.com/dannydogg16/GarminWorkout/actions/runs/41635195776), bounded to activity-local November 2, found one Garmin run missing from the sheet. [A targeted manual sync](https://github.com/dannydogg16/GarminWorkout/actions/runs/41635336732) then imported that one run, including recorded effort and six additional metrics, and verified the written values by readback. No other dates were selected. The available logs do not establish whether the earlier omission was caused by activity timing, upload timing, or another reason.
+
+The manual workflow now exposes optional `until` and full-window `dry-run` mode, using existing CLI date bounds. Workflow YAML and shell syntax passed validation; the live runs also passed all 51 offline tests. Daily schedule settings were unchanged.

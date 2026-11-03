@@ -108,6 +108,8 @@ The schedule is daily at 11:17 UTC (07:17 New York during daylight time, 06:17 i
 
 Daily runs scan an overlapping 30-day window, not just yesterday, to catch delayed uploads. Garmin IDs in the sheet provide durable state. For older history, manually run sync with `since`; there is no automatic deletion or correction of already-imported activities. Manual entries without Garmin IDs remain untouched; reconcile them manually to avoid counting the same run twice.
 
+To check a particular date without writing, select mode **dry-run** and set both **since** and **until** to that activity-local date (`YYYY-MM-DD`). It checks all runs on that date: `new 0` with `already present` confirms the IDs are in the sheet; `new 1` means an activity is still missing. `Selected 0`/no activities does not confirm an import. Manual **sync** with the same date bounds imports only missing runs in that range. An omitted `until` defaults to today. The daily schedule still uses its normal overlapping window.
+
 ## Prescription matching
 
 No dated running prescription exists in the uploaded workbook. `prescriptions.json` therefore starts as `[]`. To enable matching, add explicit prescriptions, for example:
