@@ -2,7 +2,7 @@
 
 Official Garmin Connect Personal API → your existing **online** [Danny Training Tracker](https://docs.google.com/spreadsheets/d/1YThajlerH-ftK-GfINcCCgi9arqCNLWOycBIvbbFJUA/edit). The Excel export was used only to inspect structure; it is not uploaded, replaced, or committed.
 
-**Daily sync is enabled. On 2026-10-29, the scheduled-event enable check passed and a full live sync caught up 15 missing runs from the overlapping 30-day window, with readback verification.** Garmin requests are now paced to reduce bursts after an earlier server cooldown. Fresh timer-driven execution after that update remains to be observed. See [validation evidence](docs/VALIDATION.md) and [official API verification](docs/API_VERIFICATION.md).
+**Live imports and daily enablement are verified. GitHub's automatic starts have been hours late; the morning schedule below is best-effort, not a delivery deadline.** Requests are paced to reduce bursts, and duplicate prevention/readback verification have passed. See [validation evidence](docs/VALIDATION.md) and [official API verification](docs/API_VERIFICATION.md).
 
 ## Spreadsheet mapping
 
