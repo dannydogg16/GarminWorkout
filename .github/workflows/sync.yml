@@ -9,6 +9,7 @@ on:
         default: dry-run-latest
         options:
           - dry-run-latest
+          - dry-run
           - apply-latest
           - sync
           - dry-run-format-times
@@ -19,6 +20,10 @@ on:
           - inspect-metrics
       since:
         description: Optional earliest local activity date (YYYY-MM-DD); default last 30 days
+        type: string
+        required: false
+      until:
+        description: Optional latest local activity date (YYYY-MM-DD); defaults to today
         type: string
         required: false
   schedule:
@@ -72,6 +77,7 @@ jobs:
           PYTHONPATH: src
           SYNC_MODE: ${{ inputs.mode }}
           SYNC_SINCE: ${{ inputs.since }}
+          SYNC_UNTIL: ${{ inputs.until }}
           EVENT_NAME: ${{ github.event_name }}
         shell: bash
         run: |
@@ -82,6 +88,7 @@ jobs:
           else
             case "$SYNC_MODE" in
               dry-run-latest) args+=(--latest) ;;
+              dry-run) ;;
               apply-latest) args+=(--latest --apply) ;;
               sync) args+=(--apply) ;;
               dry-run-format-times) args+=(--format-times) ;;
@@ -94,4 +101,5 @@ jobs:
             esac
           fi
           if [[ -n "$SYNC_SINCE" ]]; then args+=(--since "$SYNC_SINCE"); fi
+          if [[ -n "$SYNC_UNTIL" ]]; then args+=(--until "$SYNC_UNTIL"); fi
           python -m garmin_sync "${args[@]}"
